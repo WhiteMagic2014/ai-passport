@@ -87,14 +87,13 @@ python3 tools/prep_pet.py --key-color "#00FF00"   # 绿底就用绿
    fly_1_r_sprintup.png         fly_2_r_sprintup.png
    background.png               # 可选
    ```
-2. 跑脚本（用项目里的 Python venv，已装 Pillow）：
+2. 跑脚本（项目 Python 环境需已装 Pillow）：
    ```bash
-   /Users/magic2014/.workbuddy/binaries/python/envs/default/bin/python tools/prep_pet.py
+   python3 tools/prep_pet.py
    ```
 3. **新增了 `.c` 文件要重新扫描构建缓存**（CMake 用 `file(GLOB)` 收集源文件，缓存了旧列表）：
    ```bash
-   IDF_PYTHON_ENV_PATH=/Users/magic2014/.espressif/python_env/idf5.5_py3.10_env \
-     source /Users/magic2014/esp/v5.5.5/esp-idf/export.sh
+   source "$IDF_PATH/export.sh"        # 先 export IDF_PATH=/path/to/esp-idf
    idf.py reconfigure
    idf.py build
    ```
@@ -110,9 +109,8 @@ python3 tools/prep_pet.py --key-color "#00FF00"   # 绿底就用绿
 python3 tools/prep_pet.py
 python3 tools/prep_pet.py --size 80          # 想要更大的宠物
 
-# 进入 ESP-IDF 环境并构建
-IDF_PYTHON_ENV_PATH=/Users/magic2014/.espressif/python_env/idf5.5_py3.10_env \
-  source /Users/magic2014/esp/v5.5.5/esp-idf/export.sh
+# 进入 ESP-IDF 环境并构建（先 export IDF_PATH=/path/to/esp-idf）
+source "$IDF_PATH/export.sh"
 idf.py set-target esp32c3
 idf.py reconfigure && idf.py build
 idf.py flash monitor
