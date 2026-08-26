@@ -3,7 +3,7 @@
 // 行为 (动作/帧/速度/跳跃) 全部来自 main/pet/pet_manifest.h,
 // 由 tools/prep_pet.py 从 pets/ 的 PNG 自动汇总生成, 本文件不含任何动作硬编码。
 // motion 字段 (idle/moveforward/sprintforward/moveup/sprintup) 决定移动方式, 与动物种类无关。
-// 资源: tools/png2lvgl.py + tools/prep_pet.py 生成 (56x56, 格式随 prep_pet.py, 朝右归一)
+// 资源: tools/png2lvgl.py + tools/prep_pet.py 生成 (64x64, 格式随 prep_pet.py, 朝右归一, 不裁切)
 #include "demo.h"
 #include "bsp_display.h"
 #include "ui_pixel.h"
@@ -14,7 +14,7 @@
 
 /* ===== 显示 ===== */
 #define PET_SCALE      460                                   /* 256=100% → 460 ≈ 1.8x */
-#define PET_DRAW_W     ((PET_SPRITE_W * PET_SCALE) / 256)    /* 56*1.8 ≈ 101 */
+#define PET_DRAW_W     ((PET_SPRITE_W * PET_SCALE) / 256)    /* 64*1.8 ≈ 115 */
 #define PET_DRAW_H     ((PET_SPRITE_H * PET_SCALE) / 256)
 #define GROUND_Y       286                                   /* 草地顶面 */
 #define PET_Y_BASE     (GROUND_Y - PET_DRAW_H)

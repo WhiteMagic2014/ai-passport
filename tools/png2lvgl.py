@@ -3,7 +3,7 @@
 """
 png2lvgl.py —— 单张 PNG → LVGL 9 C 数组
 
-功能: 抠背景(色键) + 方向归一(朝左自动镜像) + 方形裁切 + 缩放 + 输出像素格式。
+功能: 抠背景(色键) + 方向归一(朝左自动镜像) + 整图缩放(保留原位, 不裁切) + 输出像素格式。
 命名约定: <action>_<frame>_<dir>[_<motion>].png
   - dir: r=朝右, l=朝左(自动水平镜像成朝右)
   - motion 必填, 只描述画面怎么动, 与动物动作无关:
@@ -12,8 +12,8 @@ png2lvgl.py —— 单张 PNG → LVGL 9 C 数组
 
 用法:
   python3 tools/png2lvgl.py pets/walk_3_l_moveforward.png \
-      --key-color "#F74859" --tolerance 50 --size 56 \
-      --pad 0.04 --format rgb565 --out main/pet
+      --key-color "#F74859" --tolerance 50 --size 64 \
+      --format rgb565 --out main/pet
 
   # 批量转换见 tools/prep_pet.py
 """
@@ -156,50 +156,13 @@ def mirror_h(im):
     return im.transpose(Image.FLIP_LEFT_RIGHT)
 
 
-def find_bbox(im):
-    """alpha>0 区域的 bbox; 自动忽略水印删除遗留的透明空洞, 不影响猫本体范围"""
-    px = im.load(); w, h = im.size
-    minx, miny, maxx, maxy = w, h, -1, -1
-    found = False
-    for y in range(h):
-        for x in range(w):
-            if px[x, y][3] > 0:
-                if not found:
-                    minx = maxx = x; miny = maxy = y; found = True
-                if x < minx: minx = x
-                if y < miny: miny = y
-                if x > maxx: maxx = x
-                if y > maxy: maxy = y
-    return (minx, miny, maxx, maxy) if found else None
-
-
-def square_crop(im, bbox, pad):
-    """以 bbox 中心裁正方形, 边长 = max(bw,bh)*(1+pad)。
-       越界部分用透明画布承接, 保证猫 100% 完整, 不被切。"""
-    minx, miny, maxx, maxy = bbox
-    bw = maxx - minx + 1
-    bh = maxy - miny + 1
-    side = max(1, int(max(bw, bh) * (1.0 + pad)))
-    cx = (minx + maxx) // 2
-    cy = (miny + maxy) // 2
-    sx = cx - side // 2
-    sy = cy - side // 2
-    out = Image.new('RGBA', (side, side), (0, 0, 0, 0))
-    src_x0, src_y0 = max(0, sx), max(0, sy)
-    src_x1, src_y1 = min(im.size[0], sx + side), min(im.size[1], sy + side)
-    if src_x1 > src_x0 and src_y1 > src_y0:
-        region = im.crop((src_x0, src_y0, src_x1, src_y1))
-        out.paste(region, (src_x0 - sx, src_y0 - sy))
-    return out
-
-
 # ---------- 像素格式生成 ----------
 
 def gen_argb(pixels, w, h, key, tol):
     """LV_COLOR_FORMAT_ARGB8888: 4 字节/像素, 带完整 8 位 alpha。
 
     - 内存布局 = [b, g, r, a] (小端, 即 LVGL9 的 lv_color32_t)。
-    - 质量最高、体积最大 (4B/px): 56x56 宠物一帧 12544 字节。
+    - 质量最高、体积最大 (4B/px): 64x64 宠物一帧 16384 字节。
     - LVGL 原生支持、渲染最稳, 无任何解码器坑。
     - 缺点: 对 ESP32-C3 (无 PSRAM, 1MB app 分区) 偏占 flash;
       只在需要最高画质、且空间宽松时选用。
@@ -240,7 +203,7 @@ def gen_rgb565a8(pixels, w, h, key, tol):
     - 带完整 8 位 alpha, 抠掉的背景不再变黑, 边缘平滑保留; 比 ARGB8888 省 25%。
     - 数据布局: [颜色块 w*2/行 * h] + [alpha 块 w/行 * h], dsc.stride = w*2,
       与 lv_draw_buf_width_to_stride(RGB565A8)=w*2 及解码器 alpha 偏移(stride*h)严格对齐。
-    - 当前宠物的默认格式: 透明正确、体积适中 (56x56 一帧 9408B)、渲染有完整快路径。
+    - 当前宠物的默认格式: 透明正确、体积适中 (64x64 一帧 12288B)、渲染有完整快路径。
     """
     color = []
     alpha = []
@@ -263,7 +226,7 @@ def gen_rgb565a8(pixels, w, h, key, tol):
 def make_bg(path, out_dir, w, h, fmt="rgb565", key_color=None, tol=32, name="pet_bg"):
     """生成铺满整屏的背景图 (pets/background.png → pet_bg.c/.h)。
 
-    与宠物不同: 不做 bbox / 方形裁切, 直接缩放铺满 w×h。
+    整屏铺满, 不裁切: 直接缩放铺满 w×h。
     默认 RGB565 (打包 16bit/px, 240x320 ≈ 150KB), 不需调色板、渲染稳定,
     体积约为 ARGB8888 (300KB) 的一半, 适配 ESP32-C3 1MB app 分区。
     """
@@ -290,13 +253,12 @@ def make_bg(path, out_dir, w, h, fmt="rgb565", key_color=None, tol=32, name="pet
 
 def main():
     ap = argparse.ArgumentParser(
-        description="PNG → LVGL9 C 数组 (含方向归一 + 水印透明空洞处理)")
+        description="PNG → LVGL9 C 数组 (色键抠背景 + 方向归一, 整图不裁切)")
     ap.add_argument("input", help="输入 PNG (建议命名 action_frame_dir.png)")
     ap.add_argument("--name", default=None, help="C 符号名, 留空按文件名推导")
     ap.add_argument("--key-color", default=None, help="#RRGGBB 抠背景色")
     ap.add_argument("--tolerance", type=int, default=32, help="抠背景容差 0-255")
-    ap.add_argument("--size", type=int, default=64, help="输出方形边长")
-    ap.add_argument("--pad", type=float, default=0.04, help="bbox 外扩比例 (防裁切)")
+    ap.add_argument("--size", type=int, default=64, help="输出方形边长 (基准分辨率, 显示时再缩放)")
     ap.add_argument("--format", choices=["argb8888", "rgb565", "rgb565a8"],
                     default="rgb565a8")
     ap.add_argument("--prefix", default="pet", help="C 符号前缀 (默认 pet → pet_walk_1)")
@@ -316,22 +278,16 @@ def main():
     key = parse_hex(args.key_color) if args.key_color else None
     img = key_to_alpha(img, key, args.tolerance)
 
-    # 3) 方向归一: _l 自动镜像成朝右 (需求 1)
+    # 3) 方向归一: 文件名 _l 自动水平镜像成朝右
     if not args.no_mirror and direction == 'l':
         img = mirror_h(img)
         print(f"  ↺ {args.input} (dir=l → 已水平镜像为朝右)")
 
-    # 4) bbox — alpha>0 自动排除水印透明空洞 (需求 2/3)
-    bbox = find_bbox(img)
-    if not bbox:
-        sys.exit(f"{args.input}: 未找到猫 (alpha>0 区域为空)")
-
-    # 5) 方形裁切 (透明画布承接, 猫 100% 不裁)
-    sq = square_crop(img, bbox, args.pad)
-
-    # 6) NEAREST 缩放到目标尺寸 (保留像素风硬边)
-    sqN = sq.resize((args.size, args.size), Image.NEAREST)
-    px = sqN.load()
+    # 4) 不裁切: 整张源图直接 NEAREST 缩放到基准尺寸 (64x64)。
+    #    小猫在源图里的位置 1:1 等比保留 —— 脚画在源图底部即落地, 画在中间即浮空,
+    #    由美术在 PNG 中决定, 工具不再自动居中/裁切 (需求: 浮空=浮空, 落地=落地)。
+    imgN = img.resize((args.size, args.size), Image.NEAREST)
+    px = imgN.load()
     pixels = [[px[x, y] for x in range(args.size)] for y in range(args.size)]
 
     out = os.path.join(args.out, name)

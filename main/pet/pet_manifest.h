@@ -23,8 +23,8 @@
 #include "pet_walk_3.h"
 #include "pet_walk_4.h"
 
-#define PET_SPRITE_W  56
-#define PET_SPRITE_H  56
+#define PET_SPRITE_W  64
+#define PET_SPRITE_H  64
 
 typedef enum { MOT_IDLE, MOT_MOVEFORWARD, MOT_SPRINTFORWARD, MOT_MOVEUP, MOT_SPRINTUP } pet_mot_t;
 

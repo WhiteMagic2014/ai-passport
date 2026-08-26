@@ -115,9 +115,8 @@ def main():
     ap.add_argument("--src", default="pets", help="源 PNG 目录")
     ap.add_argument("--out", default="main/pet", help="输出 .c/.h 目录")
     ap.add_argument("--prefix", default="pet", help="C 符号前缀 (默认 pet)")
-    ap.add_argument("--size", type=int, default=56, help="输出方形边长")
-    ap.add_argument("--pad", type=float, default=0.04, help="bbox 外扩比例")
-    ap.add_argument("--key-color", default="#F74859", help="AI 红底抠除色")
+    ap.add_argument("--size", type=int, default=64, help="输出方形边长")
+    ap.add_argument("--key-color", default="#1900FF", help="AI 红底抠除色")
     ap.add_argument("--tolerance", type=int, default=50, help="抠色容差")
     ap.add_argument("--format", default="rgb565a8", choices=["argb8888", "rgb565", "rgb565a8"])
     args = ap.parse_args()
@@ -148,7 +147,6 @@ def main():
             "--key-color", args.key_color,
             "--tolerance", str(args.tolerance),
             "--size", str(args.size),
-            "--pad", str(args.pad),
             "--format", args.format,
             "--prefix", args.prefix,
             "--out", args.out + "/",
