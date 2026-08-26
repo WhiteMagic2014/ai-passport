@@ -1,39 +1,57 @@
-# Repository Guidelines
+<p align="right">
+  <a href="AGENTS.zh_CN.md">简体中文</a> · <strong>English</strong>
+</p>
 
-## Project Structure & Module Organization
+# Repository Guidelines for AI Agents
 
-This repository is an ESP-IDF BSP and hardware demonstration for the ESP32-C3-based FoloToy AI Passport.
+This file is the only mandatory entry point for AI-assisted work in this repository. Read task-specific documents from the routing table below; do not load every README by default.
 
-- `components/bsp/include/`: public BSP APIs and the hardware pin/configuration source of truth (`bsp_pins.h`).
-- `components/bsp/src/`: display, button, audio, battery, and shared-I2C implementations.
-- `main/`: the LVGL menu and independent `demo_*.c` hardware validation pages. New demos should implement the `enter`, `exit`, and `key` interface declared in `demo.h`.
-- `sdkconfig.defaults`: reproducible target, console, LVGL, and memory defaults.
-- `README.md`: wiring, known hardware traps, and the required on-device acceptance checklist.
+## Project and safety baseline
 
-Keep reusable hardware logic in `components/bsp`; keep board demonstration and UI behavior in `main`.
+- Target: ESP32-C3, 8 MB Flash, no PSRAM, ESP-IDF 5.5.3.
+- Preserve existing user changes. Start with `git status --short --branch`; never overwrite or clean unrelated files.
+- Hardware facts follow this priority: product specifications and measured results → `components/bsp/include/bsp_pins.h` → BSP headers and implementation → hardware guide → README/demo code. If a task requires a hardware detail not defined by these sources, ask the user instead of guessing.
+- Reusable board logic belongs in `components/bsp`; pages, state machines, animations, and application tasks belong in `main`.
+- LVGL is not thread-safe. Code outside the LVGL task must hold `bsp_lvgl_lock()` while accessing LVGL objects.
+- Button callbacks must stay non-blocking. Audio, storage, networking, and other slow operations belong in worker tasks.
+- A demo must stop every task, timer, callback, and event handler that can access its UI before deleting the screen.
+- Keep testable state machines, protocols, timing, and layout calculations independent from ESP-IDF/LVGL and cover them with host tests.
+- Never commit credentials, device QR secrets, private keys, personal data, or unsanitized logs.
+- Every maintained Markdown document uses English at its default `.md` path and Simplified Chinese in a paired `.zh_CN.md` file. Keep both versions aligned and retain reciprocal language links.
 
-## Build, Test, and Development Commands
+## Task-specific context routing
 
-Use ESP-IDF 5.5.x:
+| Task | Read before editing |
+| --- | --- |
+| Any code change | `docs/development/agent-guide.md`, relevant headers and neighboring implementation |
+| BSP, pins, buses, display, audio, battery | `docs/hardware-design/AI_HARDWARE_DEVELOPMENT_GUIDE.md`, `components/bsp/include/bsp_pins.h` |
+| Demo or menu | `main/demo.h`, `main/main.c`, the nearest `main/demo_*.c` implementation |
+| Build, test, dependencies, partitions | `docs/development/build-and-test.md`, `sdkconfig.defaults`, `partitions.csv` |
+| CI or release | the matching file in `docs/development/CI-*.md` and `.github/workflows/` |
+| Documentation | `docs/contribution/doc-conventions.md`, `docs/INDEX.md` |
+| Commit or PR | `docs/contribution/commit-and-pr.md` |
+
+Use `docs/README.md` for the product overview and `docs/INDEX.md` when a task needs additional documentation. Fork-specific workflow is in `docs/fork-guide.md` and is not required for ordinary upstream development.
+
+## Required validation and delivery
+
+Run the smallest relevant check while iterating, then run the complete gate before delivery:
 
 ```bash
-get_idf553                    # Enter the repository's ESP-IDF 5.5.3 environment
-idf.py set-target esp32c3     # Configure a fresh checkout
-idf.py build                  # Compile firmware and validate dependencies
-idf.py flash monitor          # Flash the connected board and open logs
-idf.py fullclean              # Remove generated build state when configuration is stale
+./tools/validate.sh --static    # repository checks + host tests
+./tools/validate.sh --firmware  # ESP-IDF build + merged-image verification
+./tools/validate.sh             # complete gate
 ```
 
-There is no host-side automated test suite currently. Treat a clean `idf.py build` as the minimum check, then run every applicable item in the README acceptance checklist on real hardware.
+The complete gate requires an activated ESP-IDF 5.5.3 environment. Do not describe a successful build as hardware validation. Final delivery must report these fields separately:
 
-## Coding Style & Naming Conventions
+```text
+Build: PASS / FAIL / NOT RUN
+Host tests: PASS / FAIL / NOT RUN
+Device tests: PASS / FAIL / NOT RUN
+Unverified: remaining board, instrument, or user checks
+```
 
-Write C using four-space indentation and K&R-style braces, following nearby files. Use `snake_case` for functions and locals, `BSP_*` for public hardware constants, and `s_` for file-local state. Keep BSP APIs prefixed with `bsp_`; name demo entry points `demo_<feature>_<action>`. Prefer `static` for internal symbols. UI text stays English; explanatory comments may be Chinese. Preserve comments documenting hardware-specific register values and memory constraints.
+Create commits and push only when the user requests them or the active workflow explicitly requires them. Record user-visible changes in `docs/CHANGELOG.md`; internal refactors, CI maintenance, typo fixes, and generated-file refreshes do not require a changelog entry.
 
-## Testing Guidelines
-
-Before submitting, build from the repository root and inspect warnings. On hardware, verify menu navigation and the affected Display, Button, Audio, or Battery page. For pin, display-rotation, codec-clock, ADC, or DMA changes, explicitly record the observed hardware result in the PR. Do not increase LVGL buffers or audio allocations without checking ESP32-C3 internal RAM usage; the board has no PSRAM.
-
-## Commit & Pull Request Guidelines
-
-History follows Conventional Commit-style subjects such as `feat(bsp): ...`, `feat(demo): ...`, `fix(bsp): ...`, and `docs: ...`. Keep commits focused by subsystem. Pull requests should explain the hardware/revision tested, summarize behavior changes, list build and on-device results, and include photos or screenshots for display changes. Link related issues and call out wiring, pin-map, or compatibility impacts.
+Community guidance is in `.github/CONTRIBUTING.md`, `.github/CODE_OF_CONDUCT.md`, `.github/SECURITY.md`, and `.github/SUPPORT.md`.
