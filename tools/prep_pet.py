@@ -19,52 +19,96 @@ def motion_enum(motion):
 
 
 def build_manifest(entries, out_dir, size, has_bg):
-    """按 action 分组、帧号排序, 生成 pet_manifest.h (行为总表)。
+    """按 pet 分组, 再按 action 分组、帧号排序, 生成 pet_manifest.h (多宠物总表)。
 
-    entries: list of (sym, action, direction, motion, frame)
-    行为参数全部来自 png2lvgl.MOTION_PRESETS, 与动作名语义无关。
+    entries: list of (sym, pet_name, action, direction, motion, frame)
+    输出结构: 每个宠物一组 frame arrays + action table + rest/move pool,
+    顶层 pet_defs[] 注册表引用各宠物数据。
     """
-    groups = {}  # action -> [(frame_int, sym, motion), ...]
-    for (sym, action, _dir, motion, frame) in entries:
-        try:
-            fi = int(frame)
-        except ValueError:
-            fi = 0
-        groups.setdefault(action, []).append((fi, sym, motion))
+    # 按宠物名分组
+    pets = {}
+    for (sym, pet_name, action, _dir, motion, frame) in entries:
+        pets.setdefault(pet_name, []).append((sym, action, motion, frame))
 
-    actions = sorted(groups.keys())
-    includes = []
-    frame_arrays = []
-    act_rows = []
-    rest_pool = []
-    move_pool = []
+    pet_names = sorted(pets.keys())
 
-    for idx, action in enumerate(actions):
-        items = sorted(groups[action], key=lambda x: x[0])
-        syms = [s for (_, s, _) in items]
-        motion = items[0][2]
-        for (_, _, m) in items:
-            if m != motion:
-                sys.exit(f"动作 {action} 各帧 motion 不一致: {m} vs {motion}")
+    sections = []
+    registry_rows = []
 
-        preset = png2lvgl.MOTION_PRESETS[motion]
-        for s in syms:
-            includes.append(f'#include "{s}.h"')
-        arr = (f'static const lv_image_dsc_t *const pet_frames_{action}[] = '
-               f'{{ {", ".join("&" + s for s in syms)} }};')
-        frame_arrays.append(arr)
+    for pet_name in pet_names:
+        pet_entries = pets[pet_name]
 
-        name = action.upper()
-        act_rows.append(
-            f'  /* {name} */ {{ "{name}", pet_frames_{action}, {len(syms)}, '
-            f'{preset["frame_ms"]}, {preset["hold_ms"]}, '
-            f'{motion_enum(motion)}, {preset["step_px"]}, {preset["hop_max"]}, '
-            f'{str(preset["stationary"]).lower()} }},'
+        # 按动作分组、帧号排序
+        groups = {}
+        for (sym, action, motion, frame) in pet_entries:
+            try:
+                fi = int(frame)
+            except ValueError:
+                fi = 0
+            groups.setdefault(action, []).append((fi, sym, motion))
+
+        actions = sorted(groups.keys())
+        pet_upper = pet_name.upper()
+
+        pet_includes = []
+        pet_frame_arrays = []
+        pet_act_rows = []
+        pet_rest_pool = []
+        pet_move_pool = []
+
+        for idx, action in enumerate(actions):
+            items = sorted(groups[action], key=lambda x: x[0])
+            syms = [s for (_, s, _) in items]
+            motion = items[0][2]
+            for (_, _, m) in items:
+                if m != motion:
+                    sys.exit(f"宠物 {pet_name} 动作 {action} 各帧 motion 不一致: {m} vs {motion}")
+
+            preset = png2lvgl.MOTION_PRESETS[motion]
+            for s in syms:
+                pet_includes.append(f'#include "{pet_name}/{s}.h"')
+            arr = (f'static const lv_image_dsc_t *const {pet_name}_{action}_frames[] = '
+                   f'{{ {", ".join("&" + s for s in syms)} }};')
+            pet_frame_arrays.append(arr)
+
+            name = action.upper()
+            pet_act_rows.append(
+                f'  /* {name} */ {{ "{name}", {pet_name}_{action}_frames, {len(syms)}, '
+                f'{preset["frame_ms"]}, {preset["hold_ms"]}, '
+                f'{motion_enum(motion)}, {preset["step_px"]}, {preset["hop_max"]}, '
+                f'{str(preset["stationary"]).lower()} }},'
+            )
+            if preset['stationary']:
+                pet_rest_pool.append(idx)
+            else:
+                pet_move_pool.append(idx)
+
+        rest_str = ', '.join(str(i) for i in pet_rest_pool) or '0'
+        move_str = ', '.join(str(i) for i in pet_move_pool) or '0'
+        has_rest = '1' if pet_rest_pool else '0'
+        has_move = '1' if pet_move_pool else '0'
+
+        sections.append(
+            f'/* ===== {pet_name} ===== */\n'
+            + '\n'.join(pet_includes) + '\n\n'
+            + '\n'.join(pet_frame_arrays) + '\n\n'
+            f'static const pet_action_t {pet_name}_actions[] = {{\n'
+            + '\n'.join(pet_act_rows) + '\n'
+            f'}};\n'
+            f'#define {pet_upper}_ACT_COUNT  {len(actions)}\n\n'
+            f'#define {pet_upper}_HAS_REST  {has_rest}\n'
+            f'static const uint8_t {pet_name}_rest_pool[] = {{ {rest_str} }};\n'
+            f'#define {pet_upper}_REST_N  ({len(pet_rest_pool)})\n\n'
+            f'#define {pet_upper}_HAS_MOVE  {has_move}\n'
+            f'static const uint8_t {pet_name}_move_pool[] = {{ {move_str} }};\n'
+            f'#define {pet_upper}_MOVE_N  ({len(pet_move_pool)})\n'
         )
-        if preset['stationary']:
-            rest_pool.append(idx)
-        else:
-            move_pool.append(idx)
+
+        registry_rows.append(
+            f'  {{ "{pet_name}", {pet_name}_actions, {pet_upper}_ACT_COUNT, '
+            f'{pet_name}_rest_pool, {pet_upper}_REST_N, '
+            f'{pet_name}_move_pool, {pet_upper}_MOVE_N }},'
+        )
 
     body = (
         "/* 由 prep_pet.py 自动生成 —— 勿手改 */\n"
@@ -73,10 +117,10 @@ def build_manifest(entries, out_dir, size, has_bg):
         "#include \"lvgl.h\"\n\n"
         "#define PET_HAS_BG  " + ("1" if has_bg else "0") + "\n"
         + ("#include \"pet_bg.h\"\n\n" if has_bg else "\n")
-        + "\n".join(includes) + "\n\n"
-        "#define PET_SPRITE_W  " + str(size) + "\n"
-        "#define PET_SPRITE_H  " + str(size) + "\n\n"
-        "typedef enum { MOT_IDLE, MOT_MOVEFORWARD, MOT_SPRINTFORWARD, MOT_MOVEUP, MOT_SPRINTUP } pet_mot_t;\n\n"
+        + "#define PET_SPRITE_W  " + str(size) + "\n"
+        + "#define PET_SPRITE_H  " + str(size) + "\n\n"
+        "typedef enum { MOT_IDLE, MOT_MOVEFORWARD, MOT_SPRINTFORWARD, "
+        "MOT_MOVEUP, MOT_SPRINTUP } pet_mot_t;\n\n"
         "typedef struct {\n"
         "    const char *name;                        /* 显示标签 (动作名大写) */\n"
         "    const lv_image_dsc_t *const *frames;    /* 帧指针表 */\n"
@@ -88,32 +132,35 @@ def build_manifest(entries, out_dir, size, has_bg):
         "    int8_t   hop_max;      /* 垂直跳跃幅度 (0 = 不跳) */\n"
         "    bool     stationary;   /* true = 原地不动 */\n"
         "} pet_action_t;\n\n"
-        + "\n".join(frame_arrays) + "\n\n"
-        "static const pet_action_t pet_actions[] = {\n"
-        + "\n".join(act_rows) + "\n"
+        "typedef struct {\n"
+        "    const char *name;            /* 宠物名 */\n"
+        "    const pet_action_t *actions; /* 动作表 */\n"
+        "    uint8_t  act_count;          /* 动作数 */\n"
+        "    const uint8_t *rest_pool;    /* 静止动作下标池 */\n"
+        "    uint8_t  rest_n;             /* 静止池大小 */\n"
+        "    const uint8_t *move_pool;    /* 移动动作下标池 */\n"
+        "    uint8_t  move_n;             /* 移动池大小 */\n"
+        "} pet_def_t;\n\n"
+        + '\n\n'.join(sections) + '\n\n'
+        "/* ===== 宠物注册表 ===== */\n"
+        "static const pet_def_t pet_defs[] = {\n"
+        + '\n'.join(registry_rows) + '\n'
         "};\n\n"
-        f"#define PET_ACT_COUNT  {len(actions)}\n\n"
-        "/* 静止动作下标池 (撞墙后随机休息) */\n"
-        f"static const uint8_t pet_rest_pool[] = {{ {', '.join(str(i) for i in rest_pool)} }};\n"
-        f"#define PET_REST_N  (sizeof(pet_rest_pool) / sizeof(pet_rest_pool[0]))\n\n"
-        "/* 移动动作下标池 (休息完恢复移动 / 移动中随机切换) */\n"
-        f"static const uint8_t pet_move_pool[] = {{ {', '.join(str(i) for i in move_pool)} }};\n"
-        f"#define PET_MOVE_N  (sizeof(pet_move_pool) / sizeof(pet_move_pool[0]))\n\n"
+        "#define PET_DEFS_COUNT  (sizeof(pet_defs) / sizeof(pet_defs[0]))\n\n"
         "#endif /* PET_MANIFEST_H */\n"
     )
 
     path = os.path.join(out_dir, "pet_manifest.h")
     with open(path, "w") as f:
         f.write(body)
-    print(f"✓ {os.path.basename(path):20s}  ({len(actions)} 动作, "
-          f"{len(rest_pool)} 静止 / {len(move_pool)} 移动)")
+    print(f"✓ pet_manifest.h  ({len(pet_names)} 宠物: {', '.join(pet_names)})")
 
 
 def main():
     ap = argparse.ArgumentParser(
-        description="批量调用 png2lvgl.py 转换 pets/ → main/pet/ 并生成 pet_manifest.h")
+        description="批量调用 png2lvgl.py 转换 pets/ → main/pet/{pet_name}/ 并生成 pet_manifest.h")
     ap.add_argument("--src", default="pets", help="源 PNG 目录")
-    ap.add_argument("--out", default="main/pet", help="输出 .c/.h 目录")
+    ap.add_argument("--out", default="main/pet", help="输出根目录 (每只宠物输出到 {out}/{pet_name}/)")
     ap.add_argument("--prefix", default="pet", help="C 符号前缀 (默认 pet)")
     ap.add_argument("--size", type=int, default=64, help="输出方形边长")
     ap.add_argument("--key-color", default="#1900FF", help="AI 红底抠除色")
@@ -130,17 +177,28 @@ def main():
     if not files:
         sys.exit(f"{args.src}/ 下没有宠物动作 PNG (background.png 不算动作)")
 
-    print(f"输入: {args.src}/  ({len(files)} 张)")
-    print(f"输出: {args.out}/     规格: {args.size}x{args.size} {args.format.upper()}\n")
-
-    os.makedirs(args.out, exist_ok=True)
-
+    # 先解析所有文件, 收集 pet_name 分组信息
     entries = []
     for f in files:
         stem = os.path.splitext(os.path.basename(f))[0]
-        # 先解析收集 (motion 缺失会直接报错退出)
-        sym, action, direction, motion, frame = png2lvgl.parse_name(stem, args.prefix)
-        entries.append((sym, action, direction, motion, frame))
+        sym, pet_name, action, direction, motion, frame = png2lvgl.parse_name(stem, args.prefix)
+        entries.append((sym, pet_name, action, direction, motion, frame))
+
+    pet_names = sorted(set(e[1] for e in entries))
+    total_frames = sum(
+        png2lvgl.MOTION_PRESETS[m]["frame_ms"]
+        for m in set(e[4] for e in entries)
+    ) if entries else 0
+
+    print(f"输入: {args.src}/  ({len(files)} 张, {len(pet_names)} 只宠物: {', '.join(pet_names)})")
+    print(f"输出: {args.out}/{{pet_name}}/  规格: {args.size}x{args.size} {args.format.upper()}\n")
+
+    os.makedirs(args.out, exist_ok=True)
+
+    # 按宠物名创建子目录, 转换每张图
+    for f, (sym, pet_name, action, direction, motion, frame) in zip(files, entries):
+        pet_out = os.path.join(args.out, pet_name)
+        os.makedirs(pet_out, exist_ok=True)
 
         cmd = [
             sys.executable, tool, f,
@@ -149,13 +207,11 @@ def main():
             "--size", str(args.size),
             "--format", args.format,
             "--prefix", args.prefix,
-            "--out", args.out + "/",
+            "--out", pet_out + "/",
         ]
         r = subprocess.run(cmd)
         if r.returncode != 0:
             sys.exit(f"转换失败: {f}")
-
-    os.makedirs(args.out, exist_ok=True)
 
     # 可选背景: pets/background.png → pet_bg (整屏 240x320, RGB565 稳定渲染)
     bg_src = os.path.join(args.src, "background.png")
@@ -167,7 +223,7 @@ def main():
     build_manifest(entries, args.out, args.size, has_bg)
     print(f"\n完成 {len(files)} 张动作"
           + (" (+ 背景图 pet_bg)" if has_bg else "")
-          + f".  C 文件: {args.out}/pet_*.c  总表: {args.out}/pet_manifest.h")
+          + f".  C 文件: {args.out}/<pet_name>/pet_*.c  总表: {args.out}/pet_manifest.h")
 
 
 if __name__ == "__main__":

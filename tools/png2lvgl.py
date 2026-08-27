@@ -4,16 +4,17 @@
 png2lvgl.py —— 单张 PNG → LVGL 9 C 数组
 
 功能: 抠背景(色键) + 方向归一(朝左自动镜像) + 整图缩放(保留原位, 不裁切) + 输出像素格式。
-命名约定: <action>_<frame>_<dir>[_<motion>].png
+命名约定: <pet>_<action>_<frame>_<dir>_<motion>.png
+  - pet: 宠物对象名 (第一段, 决定输出子目录和 C 符号前缀)
   - dir: r=朝右, l=朝左(自动水平镜像成朝右)
   - motion 必填, 只描述画面怎么动, 与动物动作无关:
     idle / moveforward / sprintforward / moveup / sprintup
-  - 生成的 C 符号名: <prefix>_<action>_<frame> (默认 pet_)
+  - 生成的 C 符号名: <prefix>_<pet>_<action>_<frame> (默认 pet_)
 
 用法:
-  python3 tools/png2lvgl.py pets/walk_3_l_moveforward.png \
+  python3 tools/png2lvgl.py pets/cat_walk_3_l_moveforward.png \
       --key-color "#F74859" --tolerance 50 --size 64 \
-      --format rgb565 --out main/pet
+      --format rgb565 --out main/pet/cat
 
   # 批量转换见 tools/prep_pet.py
 """
@@ -56,40 +57,41 @@ def parse_hex(s):
 
 
 def parse_name(stem, prefix="pet"):
-    """文件名 <action>_<frame>_<dir>[_<motion>].png
-        → (sym, action, direction, motion, frame)
+    """文件名 <pet>_<action>_<frame>_<dir>_<motion>.png
+        → (sym, pet_name, action, direction, motion, frame)
 
+    - pet_name: 第一个字段, 宠物对象名 (新增, 决定输出子目录)
     - motion 必填 (idle/moveforward/sprintforward/moveup/sprintup), 缺则报错 —— 行为唯一真相
     - dir == 'l' 自动水平镜像为朝右; dir == 'r'/'right'/缺省 原样
-    - C 符号名 = {prefix}_{action}_{frame} (剥离方向与 motion 后缀)
+    - C 符号名 = {prefix}_{pet_name}_{action}_{frame} (剥离方向与 motion 后缀)
     """
     parts = stem.split('_')
-    if not parts or not parts[0]:
-        sys.exit(f"文件名 {stem!r} 无法解析 (至少要有一个动作名)")
-    action = parts[0]
+    if len(parts) < 2:
+        sys.exit(f"文件名 {stem!r} 无法解析 (至少需要 <pet>_<action> 两段)")
+
+    pet_name = parts[0]
+    action = parts[1]
+    remaining = parts[2:]
+
     motion = None
     direction = 'r'
 
-    if parts[-1] in MOTION_KEYS:
-        motion = parts[-1]
-        tail = parts[1:-1]
-        if tail and tail[-1] in DIR_KEYS:
-            direction = 'l' if tail[-1] in ('l', 'left') else 'r'
-            tail = tail[:-1]
-        frame = '_'.join(tail) or '1'
-    elif parts[-1] in DIR_KEYS:
-        direction = 'l' if parts[-1] in ('l', 'left') else 'r'
-        tail = parts[1:-1]
-        frame = '_'.join(tail) or '1'
-    else:
-        tail = parts[1:]
-        frame = '_'.join(tail) or '1'
+    if remaining and remaining[-1] in MOTION_KEYS:
+        motion = remaining[-1]
+        remaining = remaining[:-1]
+        if remaining and remaining[-1] in DIR_KEYS:
+            direction = 'l' if remaining[-1] in ('l', 'left') else 'r'
+            remaining = remaining[:-1]
+    elif remaining and remaining[-1] in DIR_KEYS:
+        direction = 'l' if remaining[-1] in ('l', 'left') else 'r'
+        remaining = remaining[:-1]
 
     if motion is None:
-        sys.exit(f"{stem!r}: 缺少 motion 字段 (必需, 例: {action}_{frame}_r_moveforward)")
+        sys.exit(f"{stem!r}: 缺少 motion 字段 (必需, 例: {pet_name}_{action}_1_r_moveforward)")
 
-    sym = f"{prefix}_{action}_{frame}"
-    return sym, action, direction, motion, frame
+    frame = '_'.join(remaining) or '1'
+    sym = f"{prefix}_{pet_name}_{action}_{frame}"
+    return sym, pet_name, action, direction, motion, frame
 
 
 def c_byte_array(name, data, per_line=12):
@@ -268,7 +270,7 @@ def main():
     args = ap.parse_args()
 
     stem = os.path.splitext(os.path.basename(args.input))[0]
-    sym, action, direction, motion, frame = parse_name(stem, args.prefix)
+    sym, pet_name, action, direction, motion, frame = parse_name(stem, args.prefix)
     name = args.name or sym
 
     # 1) 打开

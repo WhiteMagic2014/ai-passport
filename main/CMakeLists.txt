@@ -1,5 +1,6 @@
 # 自动收集宠物源文件（新增帧后需 idf.py reconfigure 让 CMake 重新扫描）
-file(GLOB PET_SRCS "pet/*.c")
+# 支持多宠物: 每只宠物在 pet/{pet_name}/ 子目录下
+file(GLOB PET_SRCS "pet/*.c" "pet/*/*.c")
 
 idf_component_register(
     SRCS "main.c"

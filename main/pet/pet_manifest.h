@@ -6,23 +6,6 @@
 
 #define PET_HAS_BG  0
 
-#include "pet_groom_1.h"
-#include "pet_groom_2.h"
-#include "pet_groom_3.h"
-#include "pet_jump_1.h"
-#include "pet_jump_2.h"
-#include "pet_jump_3.h"
-#include "pet_jump_4.h"
-#include "pet_sleep_1.h"
-#include "pet_sleep_2.h"
-#include "pet_sleep_3.h"
-#include "pet_sleep_4.h"
-#include "pet_sleep_5.h"
-#include "pet_walk_1.h"
-#include "pet_walk_2.h"
-#include "pet_walk_3.h"
-#include "pet_walk_4.h"
-
 #define PET_SPRITE_W  64
 #define PET_SPRITE_H  64
 
@@ -40,26 +23,98 @@ typedef struct {
     bool     stationary;   /* true = 原地不动 */
 } pet_action_t;
 
-static const lv_image_dsc_t *const pet_frames_groom[] = { &pet_groom_1, &pet_groom_2, &pet_groom_3 };
-static const lv_image_dsc_t *const pet_frames_jump[] = { &pet_jump_1, &pet_jump_2, &pet_jump_3, &pet_jump_4 };
-static const lv_image_dsc_t *const pet_frames_sleep[] = { &pet_sleep_1, &pet_sleep_2, &pet_sleep_3, &pet_sleep_4, &pet_sleep_5 };
-static const lv_image_dsc_t *const pet_frames_walk[] = { &pet_walk_1, &pet_walk_2, &pet_walk_3, &pet_walk_4 };
+typedef struct {
+    const char *name;            /* 宠物名 */
+    const pet_action_t *actions; /* 动作表 */
+    uint8_t  act_count;          /* 动作数 */
+    const uint8_t *rest_pool;    /* 静止动作下标池 */
+    uint8_t  rest_n;             /* 静止池大小 */
+    const uint8_t *move_pool;    /* 移动动作下标池 */
+    uint8_t  move_n;             /* 移动池大小 */
+} pet_def_t;
 
-static const pet_action_t pet_actions[] = {
-  /* GROOM */ { "GROOM", pet_frames_groom, 3, 350, 3000, MOT_IDLE, 0, 0, true },
-  /* JUMP */ { "JUMP", pet_frames_jump, 4, 110, 0, MOT_SPRINTUP, 2, 12, false },
-  /* SLEEP */ { "SLEEP", pet_frames_sleep, 5, 350, 3000, MOT_IDLE, 0, 0, true },
-  /* WALK */ { "WALK", pet_frames_walk, 4, 130, 0, MOT_MOVEFORWARD, 1, 0, false },
+/* ===== bao ===== */
+#include "bao/pet_bao_groom_1.h"
+#include "bao/pet_bao_groom_2.h"
+#include "bao/pet_bao_groom_3.h"
+#include "bao/pet_bao_jump_1.h"
+#include "bao/pet_bao_jump_2.h"
+#include "bao/pet_bao_jump_3.h"
+#include "bao/pet_bao_jump_4.h"
+#include "bao/pet_bao_sleep_1.h"
+#include "bao/pet_bao_sleep_2.h"
+#include "bao/pet_bao_walk_1.h"
+#include "bao/pet_bao_walk_2.h"
+#include "bao/pet_bao_walk_3.h"
+
+static const lv_image_dsc_t *const bao_groom_frames[] = { &pet_bao_groom_1, &pet_bao_groom_2, &pet_bao_groom_3 };
+static const lv_image_dsc_t *const bao_jump_frames[] = { &pet_bao_jump_1, &pet_bao_jump_2, &pet_bao_jump_3, &pet_bao_jump_4 };
+static const lv_image_dsc_t *const bao_sleep_frames[] = { &pet_bao_sleep_1, &pet_bao_sleep_2 };
+static const lv_image_dsc_t *const bao_walk_frames[] = { &pet_bao_walk_1, &pet_bao_walk_2, &pet_bao_walk_3 };
+
+static const pet_action_t bao_actions[] = {
+  /* GROOM */ { "GROOM", bao_groom_frames, 3, 350, 3000, MOT_IDLE, 0, 0, true },
+  /* JUMP */ { "JUMP", bao_jump_frames, 4, 110, 0, MOT_SPRINTUP, 2, 12, false },
+  /* SLEEP */ { "SLEEP", bao_sleep_frames, 2, 350, 3000, MOT_IDLE, 0, 0, true },
+  /* WALK */ { "WALK", bao_walk_frames, 3, 130, 0, MOT_MOVEFORWARD, 1, 0, false },
+};
+#define BAO_ACT_COUNT  4
+
+#define BAO_HAS_REST  1
+static const uint8_t bao_rest_pool[] = { 0, 2 };
+#define BAO_REST_N  (2)
+
+#define BAO_HAS_MOVE  1
+static const uint8_t bao_move_pool[] = { 1, 3 };
+#define BAO_MOVE_N  (2)
+
+
+/* ===== dage ===== */
+#include "dage/pet_dage_groom_1.h"
+#include "dage/pet_dage_groom_2.h"
+#include "dage/pet_dage_groom_3.h"
+#include "dage/pet_dage_jump_1.h"
+#include "dage/pet_dage_jump_2.h"
+#include "dage/pet_dage_jump_3.h"
+#include "dage/pet_dage_jump_4.h"
+#include "dage/pet_dage_sleep_1.h"
+#include "dage/pet_dage_sleep_2.h"
+#include "dage/pet_dage_sleep_3.h"
+#include "dage/pet_dage_sleep_4.h"
+#include "dage/pet_dage_sleep_5.h"
+#include "dage/pet_dage_walk_1.h"
+#include "dage/pet_dage_walk_2.h"
+#include "dage/pet_dage_walk_3.h"
+#include "dage/pet_dage_walk_4.h"
+
+static const lv_image_dsc_t *const dage_groom_frames[] = { &pet_dage_groom_1, &pet_dage_groom_2, &pet_dage_groom_3 };
+static const lv_image_dsc_t *const dage_jump_frames[] = { &pet_dage_jump_1, &pet_dage_jump_2, &pet_dage_jump_3, &pet_dage_jump_4 };
+static const lv_image_dsc_t *const dage_sleep_frames[] = { &pet_dage_sleep_1, &pet_dage_sleep_2, &pet_dage_sleep_3, &pet_dage_sleep_4, &pet_dage_sleep_5 };
+static const lv_image_dsc_t *const dage_walk_frames[] = { &pet_dage_walk_1, &pet_dage_walk_2, &pet_dage_walk_3, &pet_dage_walk_4 };
+
+static const pet_action_t dage_actions[] = {
+  /* GROOM */ { "GROOM", dage_groom_frames, 3, 350, 3000, MOT_IDLE, 0, 0, true },
+  /* JUMP */ { "JUMP", dage_jump_frames, 4, 110, 0, MOT_SPRINTUP, 2, 12, false },
+  /* SLEEP */ { "SLEEP", dage_sleep_frames, 5, 350, 3000, MOT_IDLE, 0, 0, true },
+  /* WALK */ { "WALK", dage_walk_frames, 4, 130, 0, MOT_MOVEFORWARD, 1, 0, false },
+};
+#define DAGE_ACT_COUNT  4
+
+#define DAGE_HAS_REST  1
+static const uint8_t dage_rest_pool[] = { 0, 2 };
+#define DAGE_REST_N  (2)
+
+#define DAGE_HAS_MOVE  1
+static const uint8_t dage_move_pool[] = { 1, 3 };
+#define DAGE_MOVE_N  (2)
+
+
+/* ===== 宠物注册表 ===== */
+static const pet_def_t pet_defs[] = {
+  { "bao", bao_actions, BAO_ACT_COUNT, bao_rest_pool, BAO_REST_N, bao_move_pool, BAO_MOVE_N },
+  { "dage", dage_actions, DAGE_ACT_COUNT, dage_rest_pool, DAGE_REST_N, dage_move_pool, DAGE_MOVE_N },
 };
 
-#define PET_ACT_COUNT  4
-
-/* 静止动作下标池 (撞墙后随机休息) */
-static const uint8_t pet_rest_pool[] = { 0, 2 };
-#define PET_REST_N  (sizeof(pet_rest_pool) / sizeof(pet_rest_pool[0]))
-
-/* 移动动作下标池 (休息完恢复移动 / 移动中随机切换) */
-static const uint8_t pet_move_pool[] = { 1, 3 };
-#define PET_MOVE_N  (sizeof(pet_move_pool) / sizeof(pet_move_pool[0]))
+#define PET_DEFS_COUNT  (sizeof(pet_defs) / sizeof(pet_defs[0]))
 
 #endif /* PET_MANIFEST_H */
